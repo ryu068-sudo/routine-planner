@@ -1,0 +1,16 @@
+{
+  "name": "나의 루틴 플래너",
+  "short_name": "루틴플래너",
+  "description": "루틴, 일정, 목표, 습관을 한 곳에서 관리하는 개인용 플래너",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "ko",
+  "background_color": "#f7fafc",
+  "theme_color": "#4a90d9",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
