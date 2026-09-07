@@ -102,6 +102,37 @@ function useLS(key,init){
   return [v,setV];
 }
 
+// ══════════════════════════════
+// 뒤로가기(백버튼) 지원
+// 모달/화면이 열릴 때 history 항목을 하나 쌓고, 뒤로가기를 누르면 그걸 닫는다.
+// ══════════════════════════════
+const modalOpenCounter={current:0};
+
+function useBackClose(isOpen,onClose){
+  const pushedRef=useRef(false);
+  useEffect(()=>{
+    if(!isOpen)return;
+    modalOpenCounter.current++;
+    try{window.history.pushState({sub:true},"");}catch{}
+    pushedRef.current=true;
+    const handlePop=()=>{
+      pushedRef.current=false;
+      modalOpenCounter.current=Math.max(0,modalOpenCounter.current-1);
+      onClose();
+    };
+    window.addEventListener("popstate",handlePop);
+    return()=>{
+      window.removeEventListener("popstate",handlePop);
+      if(pushedRef.current){
+        pushedRef.current=false;
+        modalOpenCounter.current=Math.max(0,modalOpenCounter.current-1);
+        try{window.history.back();}catch{}
+      }
+    };
+    // eslint-disable-next-line
+  },[isOpen]);
+}
+
 const DEFAULT_CATS=[{id:1,name:"업무",color:"#4a90d9"},{id:2,name:"건강",color:"#48bb78"},{id:3,name:"자기계발",color:"#9f7aea"},{id:4,name:"생활",color:"#ed8936"}];
 
 const LIGHT_VARS={
@@ -134,6 +165,9 @@ function App(){
   const [stretchLog,setStretchLog]=useLS("v4_stretch_log",{});
   const [lastBackup,setLastBackup]=useLS("v4_last_backup",null);
   const [dark,setDark]=useLS("v4_dark",false);
+  const [exitToast,setExitToast]=useState(false);
+  const prevTabRef=useRef(tab);
+  const fromPopRef=useRef(false);
 
   useEffect(()=>{
     const root=document.documentElement;
@@ -141,10 +175,61 @@ function App(){
     Object.entries(vars).forEach(([k,v])=>root.style.setProperty(k,v));
   },[dark]);
 
+  // 탭을 바꿀 때마다: 떠나는 히스토리 항목엔 "이전 탭"을, 새 항목엔 "현재 탭"을 기록해둔다
+  useEffect(()=>{
+    if(prevTabRef.current!==tab){
+      if(!fromPopRef.current){
+        try{
+          const curGuard=(window.history.state&&window.history.state.guard)||false;
+          window.history.replaceState({tab:prevTabRef.current,guard:curGuard},"");
+          window.history.pushState({tab:tab},"");
+        }catch{}
+      }
+      fromPopRef.current=false;
+      prevTabRef.current=tab;
+    }
+  },[tab]);
+
+  // 앱 전체 뒤로가기 처리: 열려있는 모달/화면이 없으면 탭 복원, 루트(guard)까지 오면 "한번 더 누르면 종료"
+  useEffect(()=>{
+    try{
+      window.history.replaceState({tab:"today",guard:true},"");
+      window.history.pushState({tab:"today",guard:true},"");
+    }catch{}
+    let exitArmed=false;
+    let exitTimer=null;
+    const onPop=(e)=>{
+      if(modalOpenCounter.current>0)return; // 하위 모달이 처리함
+      const st=e.state;
+      if(st&&st.tab){
+        fromPopRef.current=true;
+        setTab(st.tab);
+      }
+      if(!st||!st.guard)return;
+      if(exitArmed){
+        exitArmed=false;
+        if(exitTimer)clearTimeout(exitTimer);
+        setExitToast(false);
+        return; // 실제로 뒤로 나가도록 둠
+      }
+      exitArmed=true;
+      setExitToast(true);
+      try{window.history.pushState({tab:st.tab,guard:true},"");}catch{}
+      exitTimer=setTimeout(()=>{exitArmed=false;setExitToast(false);},2000);
+    };
+    window.addEventListener("popstate",onPop);
+    return()=>{window.removeEventListener("popstate",onPop);if(exitTimer)clearTimeout(exitTimer);};
+  },[]);
+
   const p={goals,setGoals,events,setEvents,routines,setRoutines,habits,setHabits,habitLogs,setHabitLogs,categories,setCategories,mindmaps,setMindmaps,mandalas,setMandalas,journals,setJournals,meditationLog,setMeditationLog,stretchLog,setStretchLog,lastBackup,setLastBackup,dark,setDark};
   const TABS=[{id:"today",icon:"🏠",label:"홈"},{id:"calendar",icon:"📅",label:"캘린더"},{id:"goals",icon:"🎯",label:"목표"},{id:"habits",icon:"📊",label:"습관"},{id:"think",icon:"✏️",label:"생각정리"},{id:"me",icon:"🧘",label:"나를위한"}];
   return(
     <div style={{fontFamily:"system-ui,sans-serif",maxWidth:900,margin:"0 auto",paddingBottom:80,color:"var(--color-text-primary)",background:"var(--color-background-primary)",fontSize:15,minHeight:"100vh"}}>
+      {exitToast&&(
+        <div style={{position:"fixed",bottom:88,left:"50%",transform:"translateX(-50%)",background:"rgba(26,32,44,0.92)",color:"#fff",padding:"10px 18px",borderRadius:20,fontSize:13,zIndex:500,whiteSpace:"nowrap"}}>
+          뒤로가기를 한 번 더 누르면 종료됩니다
+        </div>
+      )}
       {tab==="today"&&<TodayTab {...p}/>}
       {tab==="calendar"&&<CalendarTab {...p}/>}
       {tab==="goals"&&<GoalsTab {...p}/>}
@@ -181,6 +266,12 @@ function TodayTab({events,setEvents,routines,setRoutines,goals,habits,habitLogs,
   const [clock,setClock]=useState(new Date());
   const [notifyOn,setNotifyOn]=useLS("v4_notify",false);
   const notifiedRef=useRef(new Set());
+  useBackClose(!!routineModal,()=>setRoutineModal(null));
+  useBackClose(!!newEventDraft,()=>setNewEventDraft(null));
+  useBackClose(!!editEvent,()=>setEditEvent(null));
+  useBackClose(showCM,()=>setShowCM(false));
+  useBackClose(showBackup,()=>setShowBackup(false));
+  useBackClose(showSearch,()=>setShowSearch(false));
   const today=todayStr();
   const now=new Date();
 
@@ -274,12 +365,6 @@ function TodayTab({events,setEvents,routines,setRoutines,goals,habits,habitLogs,
         </div>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,padding:"14px 16px 6px"}}>
-        <DashCard emoji="🔄" label="루틴" value={`${doneRt}/${todayRt.length}`} pct={rtPct} color="#4a90d9"/>
-        <DashCard emoji="✅" label="할일" value={`${doneTodo}/${todayEv.length}`} pct={todayEv.length?Math.round(doneTodo/todayEv.length*100):0} color="#48bb78"/>
-        <DashCard emoji="📊" label="습관" value={`${doneHabits}/${todayHabits.length}`} pct={todayHabits.length?Math.round(doneHabits/todayHabits.length*100):0} color="#9f7aea"/>
-      </div>
-
       <div style={{padding:"6px 16px 16px"}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
           <button onClick={()=>setFilterCat(null)} style={{...chip(filterCat===null,"#4a90d9")}}>전체</button>
@@ -291,7 +376,7 @@ function TodayTab({events,setEvents,routines,setRoutines,goals,habits,habitLogs,
         </div>
 
         <Section title="📊 이번 주 리뷰" action={<SmBtn onClick={()=>setShowReview(v=>!v)}>{showReview?"접기":"펼치기"}</SmBtn>}>
-          {showReview&&<WeeklyReview habits={habits} habitLogs={habitLogs} goals={goals} meditationLog={meditationLog} stretchLog={stretchLog}/>}
+          {showReview&&<WeeklyReview habits={habits} habitLogs={habitLogs} goals={goals} events={events} categories={categories} meditationLog={meditationLog} stretchLog={stretchLog}/>}
         </Section>
 
         <Section title="루틴" badge={`${doneRt}/${todayRt.length}`} badgeColor="#4a90d9" action={<SmBtn onClick={()=>setRoutineModal({isNew:true,title:"",freq:"daily",days:[],color:COLORS[routines.length%COLORS.length],catId:null,time:""})}>+ 추가</SmBtn>}>
@@ -472,7 +557,7 @@ function DashCard({emoji,label,value,pct,color}){
 // ══════════════════════════════
 function last7Dates(){return Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(6-i));return fmt(d);});}
 
-function WeeklyReview({habits,habitLogs,goals,meditationLog,stretchLog}){
+function WeeklyReview({habits,habitLogs,goals,events,categories,meditationLog,stretchLog}){
   const days=last7Dates();
   const habitTotal=habits.length*7;
   const habitDone=habits.reduce((s,h)=>s+days.filter(d=>habitLogs[`${h.id}_${d}`]).length,0);
@@ -480,6 +565,16 @@ function WeeklyReview({habits,habitLogs,goals,meditationLog,stretchLog}){
   const goalAvg=goals.length?Math.round(goals.reduce((s,g)=>s+(g.manualPct||0),0)/goals.length):0;
   const medMin=days.reduce((s,d)=>s+(meditationLog[d]||0),0);
   const stretchDone=days.reduce((s,d)=>s+STRETCHES.filter(x=>stretchLog[`${x.id}_${d}`]).length,0);
+  const calcGoalPct=g=>{const rel=(events||[]).filter(e=>e.goalId===g.id);return rel.length?Math.round(rel.filter(e=>e.done).length/rel.length*100):g.manualPct||0;};
+  const catStat=name=>{
+    const cat=(categories||[]).find(c=>c.name===name);
+    if(!cat)return null;
+    const catGoals=goals.filter(g=>g.catId===cat.id);
+    const avg=catGoals.length?Math.round(catGoals.reduce((s,g)=>s+calcGoalPct(g),0)/catGoals.length):0;
+    return{color:cat.color,count:catGoals.length,avg};
+  };
+  const workStat=catStat("업무");
+  const selfDevStat=catStat("자기계발");
   return(
     <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
       <div style={{background:"var(--color-background-secondary)",borderRadius:12,padding:"12px",border:"0.5px solid var(--color-border-tertiary)"}}>
@@ -498,6 +593,20 @@ function WeeklyReview({habits,habitLogs,goals,meditationLog,stretchLog}){
         <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>체조 완료</div>
         <div style={{fontSize:20,fontWeight:700,color:"#48bb78"}}>{stretchDone}회</div>
       </div>
+      {workStat&&(
+        <div style={{background:"var(--color-background-secondary)",borderRadius:12,padding:"12px",border:"0.5px solid var(--color-border-tertiary)"}}>
+          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>💼 업무 진행률</div>
+          <div style={{fontSize:20,fontWeight:700,color:workStat.color}}>{workStat.avg}%</div>
+          <div style={{fontSize:10,color:"var(--color-text-secondary)",marginTop:2}}>목표 {workStat.count}개</div>
+        </div>
+      )}
+      {selfDevStat&&(
+        <div style={{background:"var(--color-background-secondary)",borderRadius:12,padding:"12px",border:"0.5px solid var(--color-border-tertiary)"}}>
+          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>📚 자기계발 진행률</div>
+          <div style={{fontSize:20,fontWeight:700,color:selfDevStat.color}}>{selfDevStat.avg}%</div>
+          <div style={{fontSize:10,color:"var(--color-text-secondary)",marginTop:2}}>목표 {selfDevStat.count}개</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -550,6 +659,8 @@ function CalendarTab({events,setEvents,goals,categories}){
   const [modal,setModal]=useState(null);
   const [detailEv,setDetailEv]=useState(null);
   const [filterCat,setFilterCat]=useState(null);
+  useBackClose(!!modal,()=>setModal(null));
+  useBackClose(!!detailEv,()=>setDetailEv(null));
 
   const nav=dir=>setCurDate(d=>{
     const n=new Date(d);
@@ -719,12 +830,35 @@ function GoalsTab({goals,setGoals,events,categories}){
   const save=g=>{if(g.id&&goals.find(x=>x.id===g.id))setGoals(p=>p.map(x=>x.id===g.id?g:x));else setGoals(p=>[...p,{...g,id:Date.now()}]);setModal(null);};
   const del=id=>{setGoals(p=>p.filter(g=>g.id!==id));setModal(null);};
   const filtered=goals.filter(g=>!filterCat||g.catId===filterCat);
+  const catProgress=categories.map(c=>{
+    const catGoals=goals.filter(g=>g.catId===c.id);
+    if(!catGoals.length)return null;
+    const avg=Math.round(catGoals.reduce((s,g)=>s+calcPct(g),0)/catGoals.length);
+    return{...c,avg,count:catGoals.length};
+  }).filter(Boolean);
+  useBackClose(!!modal,()=>setModal(null));
   return(
     <div style={{padding:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <span style={{fontSize:18,fontWeight:600}}>🎯 목표 관리</span>
         <SmBtn onClick={()=>setModal({isNew:true,title:"",color:COLORS[goals.length%COLORS.length],deadline:"",desc:""})}>+ 목표 추가</SmBtn>
       </div>
+      {catProgress.length>0&&(
+        <Section title="📊 카테고리별 진행률">
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+            {catProgress.map(c=>(
+              <div key={c.id} style={{background:"var(--color-background-secondary)",borderRadius:12,padding:"12px",border:"0.5px solid var(--color-border-tertiary)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <span style={{fontSize:13,fontWeight:600}}>{c.name}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:c.color}}>{c.avg}%</span>
+                </div>
+                <ProgressBar pct={c.avg} color={c.color}/>
+                <div style={{fontSize:10,color:"var(--color-text-secondary)",marginTop:2}}>목표 {c.count}개</div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
         <button onClick={()=>setFilterCat(null)} style={{...chip(filterCat===null,"#4a90d9")}}>전체</button>
         {categories.map(c=><button key={c.id} onClick={()=>setFilterCat(filterCat===c.id?null:c.id)} style={{...chip(filterCat===c.id,c.color)}}>{c.name}</button>)}
@@ -821,6 +955,7 @@ function GoalsTab({goals,setGoals,events,categories}){
 function HabitsTab({habits,setHabits,habitLogs,setHabitLogs,categories}){
   const [modal,setModal]=useState(null);
   const [filterCat,setFilterCat]=useState(null);
+  useBackClose(!!modal,()=>setModal(null));
   const today=todayStr();
   const toggle=(hid,ds)=>setHabitLogs(p=>({...p,[`${hid}_${ds}`]:!p[`${hid}_${ds}`]}));
   const last30=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(29-i));return fmt(d);});
@@ -894,6 +1029,7 @@ function ThinkTab({mindmaps,setMindmaps,mandalas,setMandalas,goals,setGoals}){
   const [newMdTitle,setNewMdTitle]=useState("");
   const [showNewMm,setShowNewMm]=useState(false);
   const [newMmTitle,setNewMmTitle]=useState("");
+  useBackClose(mode!=="list",()=>{setMode("list");setSelMD(null);setSelMM(null);});
 
   const createMandala=()=>{
     const title=newMdTitle.trim()||"새 만다라트";
