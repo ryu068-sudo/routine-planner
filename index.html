@@ -28,6 +28,23 @@
 </head>
 <body>
 <div id="root"></div>
+<div id="error-overlay" style="display:none;position:fixed;left:10px;right:10px;bottom:10px;z-index:99999;background:#2d0a0a;color:#ffb4b4;border:2px solid #e53e3e;border-radius:10px;padding:12px 14px;font-size:12px;font-family:monospace;max-height:40vh;overflow:auto;white-space:pre-wrap;"></div>
+
+<script>
+(function(){
+  var box = document.getElementById('error-overlay');
+  function show(title, detail){
+    box.style.display = 'block';
+    box.textContent = '⚠️ ' + title + '\n' + detail;
+  }
+  window.addEventListener('error', function(e){
+    show('오류가 발생했어요 (탭해서 캡처해 알려주세요)', (e.error && e.error.stack) || e.message || String(e));
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    show('비동기 오류가 발생했어요', (e.reason && e.reason.stack) || String(e.reason));
+  });
+})();
+</script>
 
 <script>
 Babel.registerPreset("react-classic", {
