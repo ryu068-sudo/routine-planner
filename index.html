@@ -151,8 +151,9 @@ function App(){
 // 홈 탭
 // ══════════════════════════════
 function TodayTab({events,setEvents,routines,setRoutines,goals,habits,habitLogs,categories,setCategories,meditationLog,stretchLog,journals,lastBackup,setLastBackup,dark,setDark}){
-  const [showRM,setShowRM]=useState(false);
-  const [showEM,setShowEM]=useState(false);
+  const [routineModal,setRoutineModal]=useState(null);
+  const [newEventDraft,setNewEventDraft]=useState(null);
+  const [editEvent,setEditEvent]=useState(null);
   const [showCM,setShowCM]=useState(false);
   const [showBackup,setShowBackup]=useState(false);
   const [showSearch,setShowSearch]=useState(false);
@@ -274,14 +275,15 @@ function TodayTab({events,setEvents,routines,setRoutines,goals,habits,habitLogs,
           {showReview&&<WeeklyReview habits={habits} habitLogs={habitLogs} goals={goals} meditationLog={meditationLog} stretchLog={stretchLog}/>}
         </Section>
 
-        <Section title="루틴" badge={`${doneRt}/${todayRt.length}`} badgeColor="#4a90d9" action={<SmBtn onClick={()=>setShowRM(true)}>+ 추가</SmBtn>}>
+        <Section title="루틴" badge={`${doneRt}/${todayRt.length}`} badgeColor="#4a90d9" action={<SmBtn onClick={()=>setRoutineModal({isNew:true,title:"",freq:"daily",days:[],color:COLORS[routines.length%COLORS.length],catId:null,time:""})}>+ 추가</SmBtn>}>
           {todayRt.length>0&&<ProgressBar pct={rtPct} color="#4a90d9"/>}
           {todayRt.length===0&&<Empty>루틴을 추가해 보세요</Empty>}
+          <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:6}}>탭: 완료 체크 · 길게 누르기: 수정/삭제</div>
           {todayRt.map(r=>{
             const done=r.doneDate===today;
             return(
-              <div key={r.id} onClick={()=>toggleRt(r.id)}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:10,marginBottom:6,background:"var(--color-background-secondary)",cursor:"pointer",opacity:done?0.65:1,border:"0.5px solid var(--color-border-tertiary)",minHeight:48}}>
+              <div key={r.id} {...longPress(()=>setRoutineModal({...r,isNew:false}),()=>toggleRt(r.id))}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:10,marginBottom:6,background:"var(--color-background-secondary)",cursor:"pointer",opacity:done?0.65:1,border:"0.5px solid var(--color-border-tertiary)",minHeight:48,WebkitUserSelect:"none",userSelect:"none",WebkitTouchCallout:"none"}}>
                 <Check done={done} color="#48bb78" round/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:14,fontWeight:500,textDecoration:done?"line-through":"none",color:done?"var(--color-text-secondary)":"var(--color-text-primary)"}}>{r.title}</div>
@@ -297,11 +299,12 @@ function TodayTab({events,setEvents,routines,setRoutines,goals,habits,habitLogs,
           })}
         </Section>
 
-        <Section title="일정 & 할일" badge={`${doneTodo}/${todayEv.length}`} badgeColor="#48bb78" action={<SmBtn onClick={()=>setShowEM(true)}>+ 추가</SmBtn>}>
+        <Section title="일정 & 할일" badge={`${doneTodo}/${todayEv.length}`} badgeColor="#48bb78" action={<SmBtn onClick={()=>setNewEventDraft({date:today,title:"",time:"",color:"#4a90d9",note:"",done:false})}>+ 추가</SmBtn>}>
           {todayEv.length===0&&<Empty>일정을 추가해 보세요</Empty>}
+          {todayEv.length>0&&<div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:6}}>탭: 완료 체크 · 길게 누르기: 수정/삭제</div>}
           {todayEv.map(ev=>(
-            <div key={ev.id} onClick={()=>toggleEv(ev.id)}
-              style={{display:"flex",alignItems:"flex-start",gap:10,padding:"11px 12px",borderRadius:10,marginBottom:6,background:"var(--color-background-secondary)",cursor:"pointer",border:"0.5px solid var(--color-border-tertiary)",borderLeft:`3px solid ${ev.color||"#4a90d9"}`,minHeight:48}}>
+            <div key={ev.id} {...longPress(()=>setEditEvent(ev),()=>toggleEv(ev.id))}
+              style={{display:"flex",alignItems:"flex-start",gap:10,padding:"11px 12px",borderRadius:10,marginBottom:6,background:"var(--color-background-secondary)",cursor:"pointer",border:"0.5px solid var(--color-border-tertiary)",borderLeft:`3px solid ${ev.color||"#4a90d9"}`,minHeight:48,WebkitUserSelect:"none",userSelect:"none",WebkitTouchCallout:"none"}}>
               <Check done={ev.done} color="#48bb78" round={false} style={{marginTop:2}}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:14,fontWeight:500,textDecoration:ev.done?"line-through":"none",color:ev.done?"var(--color-text-secondary)":"var(--color-text-primary)"}}>{ev.title}</div>
@@ -316,8 +319,17 @@ function TodayTab({events,setEvents,routines,setRoutines,goals,habits,habitLogs,
         </Section>
       </div>
 
-      {showRM&&<RoutineModal onSave={r=>{setRoutines(p=>[...p,{...r,id:Date.now(),doneDate:null}]);setShowRM(false);}} onClose={()=>setShowRM(false)} categories={categories}/>}
-      {showEM&&<EventModal ev={{date:today,title:"",time:"",color:"#4a90d9",note:"",done:false}} goals={[]} categories={categories} onSave={e=>{setEvents(p=>[...p,...(Array.isArray(e)?e:[{...e,id:Date.now()}])]);setShowEM(false);}} onClose={()=>setShowEM(false)}/>}
+      {routineModal&&<RoutineModal routine={routineModal} categories={categories}
+        onSave={r=>{if(r.isNew)setRoutines(p=>[...p,{...r,id:Date.now(),doneDate:null}]);else setRoutines(p=>p.map(x=>x.id===r.id?r:x));setRoutineModal(null);}}
+        onDelete={routineModal.isNew?null:()=>{setRoutines(p=>p.filter(x=>x.id!==routineModal.id));setRoutineModal(null);}}
+        onClose={()=>setRoutineModal(null)}/>}
+      {newEventDraft&&<EventModal ev={newEventDraft} goals={goals} categories={categories}
+        onSave={e=>{setEvents(p=>[...p,...(Array.isArray(e)?e:[{...e,id:Date.now()}])]);setNewEventDraft(null);}}
+        onClose={()=>setNewEventDraft(null)}/>}
+      {editEvent&&<EventDetailModal ev={editEvent} goals={goals} categories={categories}
+        onSave={e=>{setEvents(p=>p.map(x=>x.id===e.id?e:x));setEditEvent(null);}}
+        onDelete={()=>{setEvents(p=>p.filter(x=>x.id!==editEvent.id));setEditEvent(null);}}
+        onClose={()=>setEditEvent(null)}/>}
       {showCM&&<CategoryModal categories={categories} setCategories={setCategories} onClose={()=>setShowCM(false)}/>}
       {showBackup&&<BackupModal onClose={()=>setShowBackup(false)} setLastBackup={setLastBackup}/>}
       {showSearch&&<SearchModal events={events} goals={goals} habits={habits} journals={journals} categories={categories} onClose={()=>setShowSearch(false)}/>}
@@ -1421,13 +1433,13 @@ function EventDetailModal({ev,goals,categories,onSave,onDelete,onClose}){
   );
 }
 
-function RoutineModal({onSave,onClose,categories}){
-  const [f,setF]=useState({title:"",freq:"daily",days:[],color:COLORS[0],catId:null,time:""});
+function RoutineModal({routine,onSave,onDelete,onClose,categories}){
+  const [f,setF]=useState({...routine});
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
   const toggleDay=d=>setF(p=>({...p,days:p.days.includes(d)?p.days.filter(x=>x!==d):[...p.days,d]}));
   return(
     <Overlay onClose={onClose}>
-      <ModalTitle>루틴 추가</ModalTitle>
+      <ModalTitle>{f.isNew?"루틴 추가":"루틴 수정"}</ModalTitle>
       <FRow><Label>루틴 이름</Label><TInput value={f.title} onChange={e=>s("title",e.target.value)} placeholder="예: 아침 스트레칭"/></FRow>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         <FRow>
@@ -1447,7 +1459,7 @@ function RoutineModal({onSave,onClose,categories}){
       </FRow>
       {f.freq==="weekly"&&<FRow><Label>요일</Label><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{DOW.map((d,i)=><button key={i} onClick={()=>toggleDay(i)} style={{width:38,height:38,borderRadius:"50%",border:`2px solid ${f.days.includes(i)?"#4a90d9":"#cbd5e0"}`,background:f.days.includes(i)?"#4a90d9":"#fff",color:f.days.includes(i)?"#fff":"#4a5568",cursor:"pointer",fontSize:13,fontWeight:500}}>{d}</button>)}</div></FRow>}
       <FRow><Label>색상</Label><ColorPicker value={f.color} onChange={c=>s("color",c)}/></FRow>
-      <MBtns onClose={onClose} onSave={()=>onSave(f)} disabled={!f.title}/>
+      <MBtns onClose={onClose} onSave={()=>onSave(f)} onDelete={onDelete} disabled={!f.title}/>
     </Overlay>
   );
 }
@@ -1565,6 +1577,21 @@ function MBtns({onClose,onSave,onDelete,disabled}){
 const taS={width:"100%",padding:"10px 12px",borderRadius:8,border:"2px solid #cbd5e0",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:14,boxSizing:"border-box",resize:"vertical",minHeight:64,outline:"none"};
 const navS={minHeight:36,padding:"6px 12px",borderRadius:8,border:"1px solid var(--color-border-tertiary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",cursor:"pointer",fontSize:14};
 const chip=(active,color)=>({minHeight:34,padding:"6px 13px",borderRadius:20,border:`1.5px solid ${active?color:"var(--color-border-tertiary)"}`,background:active?color:"transparent",color:active?"#fff":"var(--color-text-secondary)",cursor:"pointer",fontSize:12,fontWeight:active?600:400});
+
+// 짧게 탭 = onTap, 길게 누르고 있기(500ms) = onLongPress
+function longPress(onLongPress,onTap,ms=500){
+  let timer=null,fired=false,moved=false;
+  const start=()=>{fired=false;moved=false;timer=setTimeout(()=>{fired=true;onLongPress();},ms);};
+  const clear=()=>{if(timer)clearTimeout(timer);timer=null;};
+  const end=()=>{clear();if(!fired&&!moved)onTap();};
+  const move=()=>{moved=true;clear();};
+  return{
+    onTouchStart:start,onTouchEnd:end,onTouchMove:move,onTouchCancel:clear,
+    onMouseDown:start,onMouseUp:end,onMouseLeave:clear,
+    onContextMenu:e=>e.preventDefault(),
+    style:{WebkitUserSelect:"none",userSelect:"none",WebkitTouchCallout:"none"},
+  };
+}
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
