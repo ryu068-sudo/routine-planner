@@ -1363,7 +1363,7 @@ function EventModal({ev,goals,categories,onSave,onClose}){
       <FRow><Label>제목</Label><TInput value={f.title} onChange={e=>s("title",e.target.value)} placeholder="일정 제목"/></FRow>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         <FRow><Label>날짜</Label><TInput type="date" value={f.date} onChange={e=>s("date",e.target.value)}/></FRow>
-        <FRow><Label>시간</Label><TInput type="time" value={f.time||""} onChange={e=>s("time",e.target.value)}/></FRow>
+        <FRow><Label>시간</Label><TimeField value={f.time||""} onChange={v=>s("time",v)}/></FRow>
       </div>
       {isNew&&(
         <FRow>
@@ -1407,7 +1407,7 @@ function EventDetailModal({ev,goals,categories,onSave,onDelete,onClose}){
       <FRow><Label>제목</Label><TInput value={f.title} onChange={e=>s("title",e.target.value)}/></FRow>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         <FRow><Label>날짜</Label><TInput type="date" value={f.date} onChange={e=>s("date",e.target.value)}/></FRow>
-        <FRow><Label>시간</Label><TInput type="time" value={f.time||""} onChange={e=>s("time",e.target.value)}/></FRow>
+        <FRow><Label>시간</Label><TimeField value={f.time||""} onChange={v=>s("time",v)}/></FRow>
       </div>
       <FRow>
         <Label>카테고리</Label>
@@ -1449,7 +1449,7 @@ function RoutineModal({routine,onSave,onDelete,onClose,categories}){
             {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </TSel>
         </FRow>
-        <FRow><Label>시작 시간 (선택)</Label><TInput type="time" value={f.time||""} onChange={e=>s("time",e.target.value)}/></FRow>
+        <FRow><Label>시작 시간 (선택)</Label><TimeField value={f.time||""} onChange={v=>s("time",v)}/></FRow>
       </div>
       <FRow>
         <Label>반복</Label>
@@ -1558,6 +1558,93 @@ function Label({children}){return <div style={{fontSize:13,color:"var(--color-te
 function FRow({children}){return <div style={{marginBottom:12}}>{children}</div>;}
 function TInput({style,...p}){return <input style={{width:"100%",minHeight:44,padding:"10px 12px",borderRadius:8,border:"2px solid #cbd5e0",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:14,boxSizing:"border-box",outline:"none",transition:"border-color 0.2s",...style}} onFocus={e=>e.target.style.borderColor="#4a90d9"} onBlur={e=>e.target.style.borderColor="#cbd5e0"} {...p}/>;}
 function TSel({children,...p}){return <select style={{width:"100%",minHeight:44,padding:"10px 12px",borderRadius:8,border:"2px solid #cbd5e0",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:14,boxSizing:"border-box"}} {...p}>{children}</select>;}
+// ══════════════════════════════
+// 시간 선택 (오전/오후 + 시 + 분, 스크롤 휠)
+// ══════════════════════════════
+const WHEEL_ITEM_H=40;
+
+function WheelColumn({options,value,onChange,width}){
+  const ref=useRef(null);
+  const scrollTimer=useRef(null);
+  const idx=Math.max(0,options.findIndex(o=>o.value===value));
+
+  useEffect(()=>{
+    if(ref.current)ref.current.scrollTop=idx*WHEEL_ITEM_H;
+    // eslint-disable-next-line
+  },[]);
+
+  useEffect(()=>{
+    if(!ref.current)return;
+    const target=idx*WHEEL_ITEM_H;
+    if(Math.abs(ref.current.scrollTop-target)>2)ref.current.scrollTop=target;
+  },[value]);
+
+  const handleScroll=()=>{
+    if(scrollTimer.current)clearTimeout(scrollTimer.current);
+    scrollTimer.current=setTimeout(()=>{
+      if(!ref.current)return;
+      const i=Math.round(ref.current.scrollTop/WHEEL_ITEM_H);
+      const clamped=Math.max(0,Math.min(options.length-1,i));
+      ref.current.scrollTop=clamped*WHEEL_ITEM_H;
+      if(options[clamped]&&options[clamped].value!==value)onChange(options[clamped].value);
+    },100);
+  };
+
+  return(
+    <div ref={ref} onScroll={handleScroll}
+      style={{width:width||52,height:WHEEL_ITEM_H*3,overflowY:"auto",scrollSnapType:"y mandatory",WebkitOverflowScrolling:"touch",position:"relative"}}>
+      <div style={{height:WHEEL_ITEM_H}}/>
+      {options.map(o=>(
+        <div key={o.value} onClick={()=>{onChange(o.value);}}
+          style={{height:WHEEL_ITEM_H,display:"flex",alignItems:"center",justifyContent:"center",scrollSnapAlign:"center",cursor:"pointer",fontSize:o.value===value?18:15,fontWeight:o.value===value?700:400,color:o.value===value?"#4a90d9":"var(--color-text-secondary)",transition:"font-size 0.1s"}}>
+          {o.label}
+        </div>
+      ))}
+      <div style={{height:WHEEL_ITEM_H}}/>
+    </div>
+  );
+}
+
+function time24ToParts(t){
+  if(!t)return{meridiem:"오전",hour:9,minute:0};
+  const[h,m]=t.split(":").map(Number);
+  const meridiem=h<12?"오전":"오후";
+  let hour=h%12;if(hour===0)hour=12;
+  return{meridiem,hour,minute:m||0};
+}
+function partsToTime24(parts){
+  let h=parts.hour%12;
+  if(parts.meridiem==="오후")h+=12;
+  return`${String(h).padStart(2,"0")}:${String(parts.minute).padStart(2,"0")}`;
+}
+const MERIDIEM_OPTS=[{value:"오전",label:"오전"},{value:"오후",label:"오후"}];
+const HOUR_OPTS=Array.from({length:12},(_,i)=>({value:i+1,label:String(i+1)}));
+const MINUTE_OPTS=Array.from({length:60},(_,i)=>({value:i,label:String(i).padStart(2,"0")}));
+
+function TimePicker({value,onChange}){
+  const parts=time24ToParts(value);
+  const upd=(k,v)=>onChange(partsToTime24({...parts,[k]:v}));
+  return(
+    <div style={{position:"relative",display:"flex",justifyContent:"center",alignItems:"center",gap:2,padding:"2px 0",background:"var(--color-background-secondary)",borderRadius:10,border:"2px solid #cbd5e0"}}>
+      <div style={{position:"absolute",top:WHEEL_ITEM_H,left:8,right:8,height:WHEEL_ITEM_H,background:"#4a90d918",borderTop:"1.5px solid #4a90d9",borderBottom:"1.5px solid #4a90d9",pointerEvents:"none",borderRadius:6}}/>
+      <WheelColumn options={MERIDIEM_OPTS} value={parts.meridiem} onChange={v=>upd("meridiem",v)} width={56}/>
+      <WheelColumn options={HOUR_OPTS} value={parts.hour} onChange={v=>upd("hour",v)} width={44}/>
+      <div style={{fontSize:18,color:"var(--color-text-secondary)",fontWeight:700}}>:</div>
+      <WheelColumn options={MINUTE_OPTS} value={parts.minute} onChange={v=>upd("minute",v)} width={44}/>
+    </div>
+  );
+}
+
+function TimeField({value,onChange}){
+  const hasTime=!!value;
+  return(
+    <div>
+      <button onClick={()=>onChange(hasTime?"":"09:00")} style={{...chip(hasTime,"#4a90d9"),marginBottom:hasTime?8:0}}>{hasTime?"🕐 시간 있음":"시간 없음 (탭해서 설정)"}</button>
+      {hasTime&&<TimePicker value={value} onChange={onChange}/>}
+    </div>
+  );
+}
+
 function ColorPicker({value,onChange}){return(<div style={{display:"flex",gap:6,flexWrap:"wrap",padding:"8px",borderRadius:8,border:"2px solid #cbd5e0",background:"var(--color-background-secondary)"}}>{COLORS.map(c=><div key={c} onClick={()=>onChange(c)} style={{width:30,height:30,borderRadius:"50%",background:c,cursor:"pointer",border:value===c?"3px solid var(--color-text-primary)":"3px solid transparent"}}/>)}</div>);}
 function MBtns({onClose,onSave,onDelete,disabled}){
   const [confirming,setConfirming]=useState(false);
@@ -1583,13 +1670,19 @@ function longPress(onLongPress,onTap,ms=500){
   let timer=null,fired=false,moved=false;
   const start=()=>{fired=false;moved=false;timer=setTimeout(()=>{fired=true;onLongPress();},ms);};
   const clear=()=>{if(timer)clearTimeout(timer);timer=null;};
-  const end=()=>{clear();if(!fired&&!moved)onTap();};
+  const end=(e)=>{
+    clear();
+    // 터치가 끝난 뒤 브라우저가 자동으로 만들어내는 가짜 mousedown/mouseup/click을 막아서
+    // 탭 동작이 두 번 겹쳐 실행되는 것을 방지합니다.
+    if(e&&e.type==="touchend"&&e.cancelable)e.preventDefault();
+    if(!fired&&!moved)onTap();
+  };
   const move=()=>{moved=true;clear();};
   return{
     onTouchStart:start,onTouchEnd:end,onTouchMove:move,onTouchCancel:clear,
     onMouseDown:start,onMouseUp:end,onMouseLeave:clear,
     onContextMenu:e=>e.preventDefault(),
-    style:{WebkitUserSelect:"none",userSelect:"none",WebkitTouchCallout:"none"},
+    style:{WebkitUserSelect:"none",userSelect:"none",WebkitTouchCallout:"none",touchAction:"manipulation"},
   };
 }
 
