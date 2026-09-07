@@ -61,6 +61,7 @@ const daysInMonth = (y,m) => new Date(y,m,0).getDate();
 const DOW = ["일","월","화","수","목","금","토"];
 const COLORS = ["#4a90d9","#48bb78","#ed8936","#9f7aea","#f56565","#38b2ac","#ed64a6","#667eea","#f6ad55","#68d391"];
 const isSameDay = (a,b) => fmt(a)===fmt(b);
+const dateLabel2 = ds => { const d=new Date(ds); return `${d.getMonth()+1}월 ${d.getDate()}일(${DOW[d.getDay()]})`; };
 
 const QUOTES = [
   "작은 걸음이 모여 큰 여정이 됩니다. 오늘도 한 걸음 나아가세요.",
@@ -232,6 +233,7 @@ function TodayTab({events,setEvents,routines,setRoutines,goals,habits,habitLogs,
     return ok&&(!filterCat||r.catId===filterCat);
   });
   const todayEv=events.filter(e=>e.date===today&&(!filterCat||e.catId===filterCat)).sort((a,b)=>(a.time||"").localeCompare(b.time||""));
+  const upcomingEv=events.filter(e=>e.date>today&&(!filterCat||e.catId===filterCat)).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||"")).slice(0,30);
   const doneRt=todayRt.filter(r=>r.doneDate===today).length;
   const rtPct=todayRt.length?Math.round(doneRt/todayRt.length*100):0;
   const doneTodo=todayEv.filter(e=>e.done).length;
@@ -326,6 +328,26 @@ function TodayTab({events,setEvents,routines,setRoutines,goals,habits,habitLogs,
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:14,fontWeight:500,textDecoration:ev.done?"line-through":"none",color:ev.done?"var(--color-text-secondary)":"var(--color-text-primary)"}}>{ev.title}</div>
                 <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}>
+                  {ev.time&&<span style={{fontSize:11,color:"var(--color-text-secondary)"}}>🕐{ev.time}</span>}
+                  <CatBadge catId={ev.catId} categories={categories}/>
+                </div>
+                {ev.note&&<div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:3}}>{ev.note}</div>}
+              </div>
+            </div>
+          ))}
+        </Section>
+
+        <Section title="📆 다가오는 일정" badge={upcomingEv.length||undefined} badgeColor="#667eea">
+          {upcomingEv.length===0&&<Empty>다가오는 일정이 없어요</Empty>}
+          {upcomingEv.length>0&&<div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:6}}>탭: 완료 체크 · 길게 누르기: 수정/삭제</div>}
+          {upcomingEv.map(ev=>(
+            <div key={ev.id} {...longPress(()=>setEditEvent(ev),()=>toggleEv(ev.id))}
+              style={{display:"flex",alignItems:"flex-start",gap:10,padding:"11px 12px",borderRadius:10,marginBottom:6,background:"var(--color-background-secondary)",cursor:"pointer",border:"0.5px solid var(--color-border-tertiary)",borderLeft:`3px solid ${ev.color||"#4a90d9"}`,minHeight:48,WebkitUserSelect:"none",userSelect:"none",WebkitTouchCallout:"none"}}>
+              <Check done={ev.done} color="#48bb78" round={false} style={{marginTop:2}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:500,textDecoration:ev.done?"line-through":"none",color:ev.done?"var(--color-text-secondary)":"var(--color-text-primary)"}}>{ev.title}</div>
+                <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap",alignItems:"center"}}>
+                  <span style={{fontSize:11,fontWeight:600,color:"#667eea"}}>📅{dateLabel2(ev.date)}</span>
                   {ev.time&&<span style={{fontSize:11,color:"var(--color-text-secondary)"}}>🕐{ev.time}</span>}
                   <CatBadge catId={ev.catId} categories={categories}/>
                 </div>
